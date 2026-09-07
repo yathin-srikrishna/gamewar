@@ -1,0 +1,907 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Space War 360°</title>
+<style>
+*{box-sizing:border-box;user-select:none}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#000;color:#fff;font-family:"Courier New",monospace}
+#game{position:relative;width:100%;height:100%;overflow:hidden}
+canvas{display:block;width:100%;height:100%;background:#000;image-rendering:pixelated}
+.hidden{display:none!important}
+.overlay{position:absolute;inset:0;z-index:30;background:rgba(0,0,0,.93);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:20px}
+button{background:#111;color:#fff;border:2px solid #fff;padding:9px 14px;font-family:inherit;font-weight:bold;cursor:pointer;margin:4px}
+button:hover{background:#fff;color:#000}
+
+#hud{position:absolute;top:0;right:0;width:20%;min-width:220px;height:100%;z-index:10;padding:24px 18px;background:rgba(8,8,8,.82);border-left:2px solid #fff;font-size:13px;font-weight:bold;display:flex;flex-direction:column;gap:10px}
+.hud-title{font-size:18px;padding-bottom:12px;border-bottom:2px solid #fff;margin-bottom:5px}
+.hud-line{padding:7px 0;border-bottom:1px solid #333}
+.bar{width:100%;height:14px;border:2px solid #fff;background:#111;margin-top:4px}
+.fill{height:100%;transition:width .15s}
+#hp{background:#d33}
+#xp{background:#d7a900}
+.hud-label{font-size:11px;color:#aaa;margin-top:6px}
+
+#controls{position:absolute;top:14px;right:calc(20% + 14px);z-index:15;display:flex;gap:7px}
+#controls button{padding:6px 10px;font-size:11px}
+
+#warning{position:absolute;top:20px;left:40%;transform:translateX(-50%);z-index:20;background:#900;border:2px solid #f44;padding:9px 14px;font-weight:bold;animation:flash .6s infinite alternate}
+@keyframes flash{to{opacity:.4}}
+
+#upgrades{display:flex;flex-direction:column;gap:8px}
+#upgrades button{width:min(340px,90vw);text-align:left}
+#upgrades small{color:#aaa}
+.priority{background:#900!important;border-color:#ff0!important;animation:pulse .5s infinite alternate}
+@keyframes pulse{to{transform:scale(1.04)}}
+
+.stats{border:2px solid #fff;padding:14px;min-width:280px;text-align:left;margin-bottom:12px}
+.stats p{margin:7px 0}
+.stats strong{float:right;color:#f2fa0f}
+
+#bossWarning{position:absolute;left:40%;top:45%;transform:translate(-50%,-50%);z-index:25;color:#ff3030;font-size:30px;font-weight:bold;text-shadow:3px 3px #000;animation:bossFlash .4s infinite alternate}
+@keyframes bossFlash{to{transform:translate(-50%,-50%) scale(1.08);opacity:.5}}
+
+#joy{position:absolute;left:25px;bottom:25px;width:110px;height:110px;border:2px solid #fff;border-radius:50%;display:none;z-index:20;touch-action:none}
+#knob{position:absolute;left:30px;top:30px;width:46px;height:46px;border-radius:50%;background:#fff;pointer-events:none}
+
+.btn-group{display:flex;gap:10px;justify-content:center;margin-top:10px}
+
+@media(max-width:900px){
+#hud{top:0;left:0;right:0;width:100%;min-width:0;height:auto;padding:8px 10px;border-left:0;border-bottom:2px solid #fff;background:rgba(0,0,0,.75);display:grid;grid-template-columns:repeat(2,1fr);gap:4px 12px}
+.hud-title{display:none}
+.hud-line{padding:2px 0;border:0;font-size:11px}
+.hud-label{margin:0;font-size:9px}
+.bar{height:9px;margin-top:2px}
+#controls{top:70px;right:8px}
+#warning{top:78px;left:50%;font-size:11px}
+#bossWarning{left:50%;font-size:22px}
+}
+@media(max-width:600px){
+#hud{font-size:10px}
+#controls{top:62px}
+#warning{top:98px;font-size:10px}
+}
+</style>
+</head>
+<body>
+<div id="game">
+<canvas id="canvas"></canvas>
+
+<div id="hud">
+<div class="hud-title">SPACE STATUS</div>
+<div class="hud-line">HI-SCORE: <span id="high">0</span></div>
+<div class="hud-line">BEST: <span id="best">0s</span></div>
+<div class="hud-line">LEVEL: <span id="level">1</span></div>
+<div class="hud-line">SCORE: <span id="score">0</span></div>
+<div class="hud-line">TIME: <span id="time">0s</span></div>
+<div>
+<div class="hud-label">HULL INTEGRITY</div>
+<div class="bar"><div id="hp" class="fill"></div></div>
+</div>
+<div>
+<div class="hud-label">EXPERIENCE</div>
+<div class="bar"><div id="xp" class="fill"></div></div>
+</div>
+</div>
+
+<div id="controls">
+<button id="mute">🔊: ON</button>
+<button id="pause">PAUSE</button>
+</div>
+
+<div id="warning" class="hidden">WARNING: HEALTH BELOW 40%</div>
+<div id="bossWarning" class="hidden">⚠ BOSS INCOMING ⚠</div>
+<div id="joy"><div id="knob"></div></div>
+
+<div id="start" class="overlay">
+    <h1 style="font-size: min(8vw, 64px); margin-bottom: 20px;">SPACE WAR 360°</h1>
+    <p style="font-size: 18px; margin: 8px 0;">W,A,S,D / ARROW KEYS TO MOVE</p>
+    <p style="font-size: 22px; margin: 8px 0; color:#f2fa0f;"><u>AUTO FIRE ENABLED</u></p>
+    <p style="font-size: 18px; margin: 8px 0;">ENEMIES ATTACK FROM ALL SIDES</p>
+    <p style="margin: 14px 0;">HIGH SCORE: <span id="menuScore">0</span> | BEST TIME: <span id="menuTime">0s</span></p>
+    <button id="startBtn" style="font-size: 22px; padding: 12px 28px;">START GAME</button>
+</div>
+
+<div id="pauseMenu" class="overlay hidden">
+<h2>GAME PAUSED</h2>
+<div class="btn-group">
+<button id="resumeBtn">RESUME</button>
+<button id="pauseBackBtn">MAIN MENU</button>
+</div>
+</div>
+
+<div id="levelUp" class="overlay hidden">
+<h2>LEVEL UP</h2>
+<p>SELECT AN UPGRADE</p>
+<div id="upgrades"></div>
+</div>
+
+<div id="over" class="overlay hidden">
+<h2>MISSION FAILED</h2>
+<div class="stats">
+<p>SCORE: <strong id="finalScore">0</strong></p>
+<p>TIME: <strong id="finalTime">0s</strong></p>
+<p>LEVEL: <strong id="finalLevel">1</strong></p>
+<hr>
+<p>HI-SCORE: <strong id="finalHigh">0</strong></p>
+<p>BEST TIME: <strong id="finalBest">0s</strong></p>
+</div>
+<div class="btn-group">
+<button id="restart">SYSTEM REBOOT</button>
+<button id="overBackBtn">MAIN MENU</button>
+</div>
+</div>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const c=$("canvas"),x=c.getContext("2d"),TAU=Math.PI*2;
+
+let p,E,B,G,P,T,S,EB;
+let play=0,pause=0,leveling=0,dead=0,mute=0;
+let time=0,spawn=0,shot=0,last=0,bossLevel=0;
+let keys={},touch={x:0,y:0},audio;
+
+const types=[
+{speed:150,r:12,hp:2,xp:1,color:"#f44",shape:3,type:0},
+{speed:100,r:19,hp:6,xp:3,color:"#4cf",shape:4,type:1},
+{speed:58,r:29,hp:18,xp:8,color:"#fa3",shape:6,type:2}
+];
+
+const basic=[
+["FULL HEALTH","Restore all health",p=>p.hp=p.max,"health"],
+["HIGH CALIBER","Increase bullet damage",p=>p.damage+=2,"damage"],
+["FAST LASER","Fire faster",p=>p.fire=Math.max(.08,p.fire-.045),"fire"],
+["SPEED BOOST","Move faster",p=>p.speed+=35,"speed"]
+];
+
+const extra=[
+["MAX HULL","+25 maximum health",p=>{p.max+=25;p.hp=p.max},"max"],
+["MAGNET RANGE","Pull XP from farther away",p=>p.magnet+=55,"magnet"],
+["POWER SHOT","Extra bullet damage",p=>p.damage++,"power"],
+["RAPID SYSTEM","Small fire rate boost",p=>p.fire=Math.max(.08,p.fire-.025),"rapid"]
+];
+
+const beam=[
+"MULTI BEAM CANNON",
+"Fire one extra laser beam",
+p=>{p.beams=Math.min(5,p.beams+1);p.beam++},
+"beam"
+];
+
+function resize(){
+c.width=innerWidth;
+c.height=innerHeight;
+if(S){
+S.forEach(s=>{
+if(s.x>warWidth())s.x=Math.random()*warWidth();
+});
+}
+}
+function desktop(){return innerWidth>900}
+function warWidth(){return desktop()?c.width*.8:c.width}
+addEventListener("resize",resize);
+
+function record(){
+    return {
+        score: +(localStorage.getItem("score360") || 0),
+        time: +(localStorage.getItem("time360") || 0)
+    };
+}
+
+function save(isDead){
+    let r=record();
+    r.score=Math.max(r.score,p?p.score:0);
+    r.time=Math.max(r.time,time|0);
+    localStorage.setItem("score360", r.score);
+    localStorage.setItem("time360", r.time);
+    
+    if (isDead) {
+        let runs = +(localStorage.getItem("runs360") || 0);
+        localStorage.setItem("runs360", runs + 1);
+    }
+    
+    updateMenuStats();
+    return r;
+}
+
+function updateMenuStats(){
+    let r=record();
+    $("menuScore").textContent=r.score;
+    $("menuTime").textContent=r.time+"s";
+}
+
+function sound(f,d=.08,type="square",v=.04,end){
+if(mute||!audio)return;
+try{
+let o=audio.createOscillator(),g=audio.createGain(),t=audio.currentTime;
+o.type=type;
+o.frequency.setValueAtTime(f,t);
+if(end)o.frequency.exponentialRampToValueAtTime(Math.max(1,end),t+d);
+g.gain.setValueAtTime(v,t);
+g.gain.exponentialRampToValueAtTime(.001,t+d);
+o.connect(g);g.connect(audio.destination);
+o.start();o.stop(t+d);
+}catch(e){}
+}
+
+function startAudio(){
+if(!audio)audio=new(window.AudioContext||window.webkitAudioContext)();
+if(audio.state==="suspended")audio.resume();
+}
+
+const snd={
+shoot:()=>sound(820,.055,"triangle",.035,180),
+hit:()=>sound(260,.07,"square",.04,100),
+gem:()=>sound(620,.11,"sine",.05,1250),
+kill:()=>sound(180,.2,"sawtooth",.055,45),
+upgrade:()=>sound(420,.3,"sine",.065,1200),
+damage:()=>sound(150,.14,"sawtooth",.06,55),
+enemy:()=>sound(300,.08,"square",.025,120),
+boss:()=>sound(80,.5,"sawtooth",.08,35)
+};
+
+function init(){
+let w=warWidth();
+p={
+x:w/2,y:c.height/2,r:26,collect:42,speed:250,
+hp:100,max:100,xp:0,next:10,level:1,score:0,
+damage:3,beams:1,fire:.3,magnet:115,
+angle:-Math.PI/2,inv:0,hit:0,beam:0
+};
+E=[];B=[];G=[];P=[];T=[];EB=[];
+S=Array.from({length:110},()=>({
+x:Math.random()*warWidth(),
+y:Math.random()*c.height,
+s:Math.random()<.15?2:1
+}));
+time=spawn=shot=0;
+bossLevel=0;
+pause=leveling=dead=0;
+$("pause").textContent="PAUSE";
+$("levelUp").classList.add("hidden");
+$("pauseMenu").classList.add("hidden");
+$("over").classList.add("hidden");
+$("warning").classList.add("hidden");
+$("bossWarning").classList.add("hidden");
+for(let i=0;i<3;i++)enemy();
+hud();
+}
+
+function hud(){
+if(!p)return;
+let r=record(),h=p.hp/p.max;
+$("high").textContent=Math.max(r.score,p.score);
+$("best").textContent=Math.max(r.time,time|0)+"s";
+$("level").textContent=p.level;
+$("score").textContent=p.score;
+$("time").textContent=(time|0)+"s";
+$("hp").style.width=Math.max(0,h*100)+"%";
+$("xp").style.width=Math.min(100,p.xp/p.next*100)+"%";
+$("warning").classList.toggle("hidden",h>=.4||dead||leveling||pause);
+}
+
+function maxEnemies(){
+let base=5+Math.floor(p.level*.7);
+return Math.min(p.level>=12?20:16,base);
+}
+
+function enemyDelay(){
+if(p.level<=6)return .72;
+if(p.level<=11)return .62;
+return .52;
+}
+
+function enemyType(){
+let r=Math.random();
+if(p.level<=6)return r<.60?0:r<.90?1:2;
+if(p.level<=11)return r<.45?0:r<.85?1:2;
+return r<.40?0:r<.80?1:2;
+}
+
+function spawnPos(){
+let a=Math.random()*TAU;
+let d=Math.max(warWidth(),c.height)*.65+80;
+return{x:p.x+Math.cos(a)*d,y:p.y+Math.sin(a)*d};
+}
+
+function enemy(){
+if(E.length>=maxEnemies())return;
+let t=types[enemyType()],q=spawnPos();
+let hp=t.hp+Math.floor(p.level*.45);
+let canShoot=p.level>=7&&(t.type>0||p.level>=12);
+E.push({
+x:q.x,y:q.y,
+speed:t.speed+Math.min(20,p.level*1.5),
+r:t.r,hp,max:hp,xp:t.xp,
+color:t.color,shape:t.shape,type:t.type,
+shoot:canShoot,
+cooldown:1.5+Math.random()*2,
+boss:false
+});
+}
+
+function boss(){
+if(E.some(e=>e.boss))return;
+bossLevel=p.level;
+E=[];
+EB=[];
+let q=spawnPos(),hp=90+p.level*18;
+E.push({
+x:q.x,y:q.y,speed:48+p.level,
+r:50,hp,max:hp,xp:30+p.level*3,
+color:"#ff1744",shape:8,type:3,
+shoot:true,cooldown:1.2,
+boss:true
+});
+$("bossWarning").classList.remove("hidden");
+snd.boss();
+setTimeout(()=>$("bossWarning").classList.add("hidden"),2200);
+}
+
+function shoot(now){
+if(now-shot<p.fire||!E.length)return;
+let target=E.reduce((a,b)=>Math.hypot(b.x-p.x,b.y-p.y)<Math.hypot(a.x-p.x,a.y-p.y)?b:a);
+let base=Math.atan2(target.y-p.y,target.x-p.x);
+shot=now;snd.shoot();
+
+for(let i=0;i<p.beams;i++){
+let a=base+(i-(p.beams-1)/2)*.14;
+B.push({
+x:p.x,y:p.y,
+vx:Math.cos(a)*700,vy:Math.sin(a)*700,
+r:3+p.damage*.12,damage:p.damage
+});
+}
+}
+
+function enemyShoot(e){
+let a=Math.atan2(p.y-e.y,p.x-e.x);
+let count=e.boss?3:p.level>=12&&e.type===2?2:1;
+
+for(let i=0;i<count;i++){
+let spread=(i-(count-1)/2)*(e.boss?.22:.12);
+let z=a+spread,s=e.boss?330:e.type===2?390:430;
+EB.push({
+x:e.x,y:e.y,
+vx:Math.cos(z)*s,
+vy:Math.sin(z)*s,
+r:e.boss?6:4,
+damage:e.boss?18:e.type===2?13:9,
+life:3
+});
+}
+snd.enemy();
+}
+
+function burst(X,Y,color,n=10){
+for(let i=0;i<n;i++){
+let a=Math.random()*TAU,s=50+Math.random()*180;
+P.push({
+x:X,y:Y,
+vx:Math.cos(a)*s,vy:Math.sin(a)*s,
+life:.25+Math.random()*.4,size:1+Math.random()*3,color
+});
+}
+}
+
+function floatText(X,Y,text){
+T.push({x:X,y:Y,text,life:.7});
+}
+
+function kill(i){
+let e=E[i];
+p.score+=e.xp*10;
+burst(e.x,e.y,e.color,e.boss?40:e.r>20?22:10);
+snd.kill();
+
+let n=Math.min(e.boss?8:e.xp,8);
+for(let j=0;j<n;j++){
+G.push({
+x:e.x+(Math.random()-.5)*e.r*1.5,
+y:e.y+(Math.random()-.5)*e.r*1.5,
+r:e.boss?6:5,
+xp:Math.ceil(e.xp/n)
+});
+}
+
+let wasBoss=e.boss;
+E.splice(i,1);
+
+if(wasBoss){
+p.hp=Math.min(p.max,p.hp+Math.ceil(p.max*.25));
+floatText(p.x,p.y,"BOSS DESTROYED!");
+}
+}
+
+function pick(a,n){
+return [...a].sort(()=>Math.random()-.5).slice(0,n);
+}
+
+function levelUp(){
+leveling=1;snd.upgrade();
+let low=p.hp/p.max<.4;
+let choices=p.level<=5?pick(basic,3):pick([...basic,...extra],3);
+
+if(p.level>5&&p.level%3===0){
+choices.pop();
+choices.push(beam);
+}
+
+if(low&&!choices.some(a=>a[3]==="health")){
+choices.pop();
+choices.unshift(basic[0]);
+}
+
+choices=[...new Map(choices.map(a=>[a[3],a])).values()];
+$("upgrades").innerHTML="";
+$("levelUp").classList.remove("hidden");
+
+choices.forEach(u=>{
+let b=document.createElement("button");
+b.innerHTML=`${u[0]}<br><small>${u[1]}</small>`;
+if(low&&u[3]==="health")b.className="priority";
+
+b.onclick=()=>{
+u[2](p);
+$("levelUp").classList.add("hidden");
+leveling=0;
+
+if(p.level>=10&&p.level%5===0&&bossLevel!==p.level){
+boss();
+}
+
+last=performance.now();
+hud();
+};
+
+$("upgrades").appendChild(b);
+});
+}
+
+function move(dt){
+let dx=(keys.d||keys.arrowright?1:0)-(keys.a||keys.arrowleft?1:0);
+let dy=(keys.s||keys.arrowdown?1:0)-(keys.w||keys.arrowup?1:0);
+
+if(touch.x||touch.y){dx=touch.x;dy=touch.y}
+if(dx&&dy){dx*=Math.SQRT1_2;dy*=Math.SQRT1_2}
+
+if(dx||dy){
+p.angle=Math.atan2(dy,dx);
+p.x+=dx*p.speed*dt;
+p.y+=dy*p.speed*dt;
+}
+
+p.x=Math.max(p.r,Math.min(warWidth()-p.r,p.x));
+p.y=Math.max(p.r,Math.min(c.height-p.r,p.y));
+}
+
+function damagePlayer(amount){
+if(p.inv>0)return;
+p.hp=Math.max(0,p.hp-amount);
+p.inv=.5;p.hit=.18;
+burst(p.x,p.y,"#d11",16);
+snd.damage();
+if(!p.hp)end();
+}
+
+function update(dt,now){
+time+=dt;
+move(dt);
+p.inv=Math.max(0,p.inv-dt);
+p.hit=Math.max(0,p.hit-dt);
+
+let hasBoss=E.some(e=>e.boss);
+
+if(!hasBoss&&now-spawn>enemyDelay()&&E.length<maxEnemies()){
+spawn=now;
+enemy();
+if(p.level>=12&&Math.random()<.12&&E.length<maxEnemies())enemy();
+}
+
+shoot(now);
+
+for(let i=B.length-1;i>=0;i--){
+let b=B[i];
+b.x+=b.vx*dt;b.y+=b.vy*dt;
+
+if(b.x<0||b.y<0||b.x>warWidth()||b.y>c.height){
+B.splice(i,1);continue;
+}
+
+for(let j=E.length-1;j>=0;j--){
+let e=E[j];
+if(Math.hypot(e.x-b.x,e.y-b.y)<e.r+b.r){
+e.hp-=b.damage;
+burst(b.x,b.y,"#fff",3);
+snd.hit();
+B.splice(i,1);
+if(e.hp<=0)kill(j);
+break;
+}
+}
+}
+
+for(let i=EB.length-1;i>=0;i--){
+let b=EB[i];
+b.x+=b.vx*dt;b.y+=b.vy*dt;b.life-=dt;
+
+if(b.x<0||b.y<0||b.x>warWidth()||b.y>c.height||b.life<=0){
+EB.splice(i,1);continue;
+}
+
+if(Math.hypot(b.x-p.x,b.y-p.y)<p.r+b.r){
+EB.splice(i,1);
+damagePlayer(b.damage);
+if(dead)return;
+}
+}
+
+for(let i=E.length-1;i>=0;i--){
+let e=E[i],dx=p.x-e.x,dy=p.y-e.y,d=Math.hypot(dx,dy)||1;
+e.x+=dx/d*e.speed*dt;
+e.y+=dy/d*e.speed*dt;
+
+if(e.shoot){
+e.cooldown-=dt;
+if(e.cooldown<=0){
+enemyShoot(e);
+let base=e.boss?1.1:e.type===2?1.6:2.1;
+e.cooldown=base+Math.random()*.8;
+}
+}
+
+if(d<p.r+e.r){
+damagePlayer(e.boss?30:e.r>24?25:e.r>15?18:12);
+if(dead)return;
+}
+}
+
+for(let i=G.length-1;i>=0;i--){
+let g=G[i],dx=p.x-g.x,dy=p.y-g.y,d=Math.hypot(dx,dy)||1;
+
+if(d<p.magnet){
+g.x+=dx/d*500*dt;
+g.y+=dy/d*500*dt;
+}
+
+if(d<p.collect+g.r){
+p.xp+=g.xp;
+snd.gem();
+floatText(g.x,g.y,"+"+g.xp+" XP");
+G.splice(i,1);
+
+if(p.xp>=p.next){
+p.xp-=p.next;
+p.level++;
+p.next=Math.floor(p.next*1.45);
+levelUp();
+break;
+}
+}
+}
+
+for(let i=P.length-1;i>=0;i--){
+let q=P[i];
+q.x+=q.vx*dt;q.y+=q.vy*dt;
+q.vx*=.96;q.vy*=.96;q.life-=dt;
+if(q.life<=0)P.splice(i,1);
+}
+
+for(let i=T.length-1;i>=0;i--){
+T[i].y-=35*dt;
+T[i].life-=dt;
+if(T[i].life<=0)T.splice(i,1);
+}
+
+hud();
+}
+
+function poly(X,Y,r,n,color,boss=false){
+x.save();
+x.translate(X,Y);
+x.strokeStyle=color;
+x.fillStyle=boss?"#300":"#000";
+x.lineWidth=boss?4:2;
+x.beginPath();
+
+for(let i=0;i<n;i++){
+let a=-Math.PI/2+i*TAU/n;
+let px=Math.cos(a)*r,py=Math.sin(a)*r;
+i?x.lineTo(px,py):x.moveTo(px,py);
+}
+
+x.closePath();x.fill();x.stroke();x.restore();
+}
+
+function ship(){
+let s=p.r+p.beam*2;
+if(p.inv>0&&(time*15|0)%2)return;
+
+x.save();
+x.translate(p.x,p.y);
+x.rotate(p.angle);
+x.fillStyle=p.hit?"#900":"#111";
+x.strokeStyle="#fff";
+x.lineWidth=2.5;
+x.beginPath();
+
+x.moveTo(s*1.45,0);
+x.lineTo(s*.2,s*.38);
+x.lineTo(-s*.05,s*.95);
+x.lineTo(-s*.45,s*1.08);
+x.lineTo(-s*.32,s*.28);
+x.lineTo(-s*.95,s*.2);
+x.lineTo(-s*.78,0);
+x.lineTo(-s*.95,-s*.2);
+x.lineTo(-s*.32,-s*.28);
+x.lineTo(-s*.45,-s*1.08);
+x.lineTo(-s*.05,-s*.95);
+x.lineTo(s*.2,-s*.38);
+x.closePath();x.fill();x.stroke();
+
+x.fillStyle="#fff";
+x.beginPath();
+x.ellipse(s*.22,0,s*.28,s*.18,0,0,TAU);
+x.fill();
+
+x.fillStyle="#f2fa0f";
+x.beginPath();
+x.moveTo(-s*.78,-s*.2);
+x.lineTo(-s*1.35,0);
+x.lineTo(-s*.78,s*.2);
+x.fill();
+
+if(p.beams>1){
+x.strokeStyle="#f2fa0f";
+x.lineWidth=3;
+for(let i=0;i<p.beams;i++){
+let y=(i-(p.beams-1)/2)*7;
+x.beginPath();
+x.moveTo(s*.5,y);
+x.lineTo(s*1.15,y);
+x.stroke();
+}
+}
+x.restore();
+}
+
+function draw(){
+x.fillStyle="#000";
+x.fillRect(0,0,c.width,c.height);
+
+x.save();
+x.beginPath();
+x.rect(0,0,warWidth(),c.height);
+x.clip();
+
+x.fillStyle="#fff";
+if(S)S.forEach(s=>x.fillRect(s.x,s.y,s.s,s.s));
+
+if(play){
+G.forEach(g=>{
+x.fillStyle="#f2c94c";
+x.beginPath();
+x.arc(g.x,g.y,g.r,0,TAU);
+x.fill();
+
+x.fillStyle="#fff3a3";
+x.beginPath();
+x.arc(g.x,g.y,g.r*.4,0,TAU);
+x.fill();
+
+x.fillStyle="#c99000";
+x.fillRect(g.x-1,g.y-g.r*.45,2,g.r*.9);
+});
+
+x.fillStyle="#f2fa0f";
+B.forEach(b=>x.fillRect(b.x-b.r,b.y-b.r,b.r*2,b.r*2));
+
+EB.forEach(b=>{
+x.fillStyle="#ff3030";
+x.fillRect(b.x-b.r,b.y-b.r,b.r*2,b.r*2);
+});
+
+E.forEach(e=>{
+poly(e.x,e.y,e.r,e.shape,e.color,e.boss);
+
+if(e.hp<e.max||e.boss){
+let w=e.r*2;
+x.fillStyle="#222";
+x.fillRect(e.x-w/2,e.y-e.r-12,w,e.boss?7:4);
+x.fillStyle=e.boss?"#ff1744":"#d33";
+x.fillRect(e.x-w/2,e.y-e.r-12,w*Math.max(0,e.hp/e.max),e.boss?7:4);
+}
+
+if(e.boss){
+x.fillStyle="#fff";
+x.font="bold 12px monospace";
+x.textAlign="center";
+x.fillText("BOSS",e.x,e.y-e.r-22);
+}
+});
+
+ship();
+
+P.forEach(q=>{
+x.globalAlpha=Math.min(1,q.life*2);
+x.fillStyle=q.color;
+x.fillRect(q.x,q.y,q.size,q.size);
+});
+
+x.globalAlpha=1;
+
+T.forEach(t=>{
+x.globalAlpha=Math.min(1,t.life*2);
+x.fillStyle="#f2c94c";
+x.strokeStyle="#000";
+x.lineWidth=3;
+x.font="bold 14px 'Courier New'";
+x.textAlign="center";
+x.strokeText(t.text,t.x,t.y);
+x.fillText(t.text,t.x,t.y);
+});
+}
+
+x.globalAlpha=1;
+x.textAlign="left";
+x.restore();
+
+if(desktop()){
+x.fillStyle="rgba(0,0,0,.2)";
+x.fillRect(warWidth(),0,c.width-warWidth(),c.height);
+}
+}
+
+function end(){
+dead=1;
+let r=save(true);
+$("finalScore").textContent=p.score;
+$("finalTime").textContent=(time|0)+"s";
+$("finalLevel").textContent=p.level;
+$("finalHigh").textContent=r.score;
+$("finalBest").textContent=r.time+"s";
+$("warning").classList.add("hidden");
+$("over").classList.remove("hidden");
+}
+
+function loop(t){
+requestAnimationFrame(loop);
+if(!last)last=t;
+let dt=Math.min(.1,(t-last)/1000);
+last=t;
+
+if(play&&!pause&&!leveling&&!dead)update(dt,t/1000);
+draw();
+}
+
+function togglePause(){
+if(!play||leveling||dead)return;
+pause=!pause;
+$("pause").textContent=pause?"RESUME":"PAUSE";
+$("pauseMenu").classList.toggle("hidden",!pause);
+last=performance.now();
+hud();
+}
+
+function toggleMute(){
+startAudio();
+mute=!mute;
+$("mute").textContent=mute?"SND: OFF":"SND: ON";
+}
+
+function goToMainMenu(){
+save(false);
+window.location.href = "index.html";
+}
+
+addEventListener("keydown",e=>{
+startAudio();
+let k=e.key.toLowerCase();
+keys[k]=1;
+if(k==="p")togglePause();
+if(k==="m")toggleMute();
+});
+
+addEventListener("keyup",e=>keys[e.key.toLowerCase()]=0);
+
+$("startBtn").onclick=()=>{
+startAudio();
+init();play=1;
+$("start").classList.add("hidden");
+last=performance.now();
+};
+
+$("restart").onclick=()=>{
+init();play=1;
+$("over").classList.add("hidden");
+last=performance.now();
+};
+
+$("pause").onclick=togglePause;
+$("resumeBtn").onclick=togglePause;
+$("pauseBackBtn").onclick=goToMainMenu;
+$("overBackBtn").onclick=goToMainMenu;
+$("mute").onclick=toggleMute;
+
+if("ontouchstart" in window||navigator.maxTouchPoints){
+$("joy").style.display="block";
+}
+
+let joyId,center;
+
+function moveJoy(t){
+let dx=t.clientX-center.x,dy=t.clientY-center.y;
+let len=Math.hypot(dx,dy)||1,d=Math.min(40,len);
+
+touch={x:dx/len*d/40,y:dy/len*d/40};
+$("knob").style.transform=`translate(${dx/len*d}px,${dy/len*d}px)`;
+}
+
+$("joy").addEventListener("touchstart",e=>{
+startAudio();
+let r=$("joy").getBoundingClientRect();
+center={x:r.left+r.width/2,y:r.top+r.height/2};
+joyId=e.changedTouches[0].identifier;
+moveJoy(e.changedTouches[0]);
+},{passive:false});
+
+$("joy").addEventListener("touchmove",e=>{
+e.preventDefault();
+for(const t of e.changedTouches){
+if(t.identifier===joyId)moveJoy(t);
+}
+},{passive:false});
+
+function resetJoy(){
+touch={x:0,y:0};
+$("knob").style.transform="translate(0,0)";
+}
+
+$("joy").addEventListener("touchend",resetJoy);
+$("joy").addEventListener("touchcancel",resetJoy);
+
+resize();
+updateMenuStats();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+<footer class="site-footer">
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            return new Promise((resolve, reject) => {
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                        <header class="main-header">
+                                border-radius: 12px;
+                                    <div class="wrapper">
+                                            grid-template-columns: repeat(3, 1fr);
+                                                justify-content: space-between;
+                                                    grid-template-columns: repeat(3, 1fr);
+                                                        <aside class="sidebar">
+                                                                align-items: flex-start;
+                                                                    grid-template-columns: repeat(3, 1fr);
+                                                                        transition: transform 0.2s ease-in-out;
+                                                                            border-radius: 12px;
+                                                                                localStorage.setItem("theme", "dark");
+                                                                                    border-radius: 12px;
+                                                                                        setTimeout(() => {
+                                                                                                <li><a href="#home">Home</a></li>
+                                                                                                    <div class="wrapper">
+                                                                                                            
+                                                                                                    </div>
+                                                                                        })
+                                                        </aside>
+                                    </div>
+                        </header>
+            })
